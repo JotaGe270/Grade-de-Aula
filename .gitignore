@@ -1,6 +1,4 @@
-bin/
-obj/
-.local/
-appsettings.Local.json
-appsettings.Testing.json
-*.log
+.venv/
+__pycache__/
+*.pyc
+db.sqlite3

@@ -1,0 +1,188 @@
+/* Componentes em tons de branco e azul. Variantes no mesmo espírito do shadcn:
+   preenchido (.pri), tonal (.tonal) e contorno (botão padrão). */
+:root {
+  --blue-50: #f4f8fd;
+  --blue-100: #e7f0fe;
+  --blue-200: #c9dbf8;
+  --blue-300: #93b4ef;
+  --blue-600: #1d4ed8;
+  --blue-700: #1e40af;
+  --blue-800: #1e3a8a;
+  --blue-900: #172554;
+  --white: #fff;
+  --ink: #14213d;
+  --mut: #4d6285;
+  --line: #d5e3f5;
+  --bg: var(--blue-50);
+  --card: var(--white);
+  --pri: var(--blue-600);
+  --pri2: var(--blue-100);
+  --ok: #047857;
+  --bad: #b91c1c;
+  --warn: #b45309;
+  --shadow: 0 1px 2px rgb(23 37 84 / 5%), 0 16px 40px rgb(30 58 138 / 8%);
+}
+
+* { box-sizing: border-box }
+[hidden] { display: none !important }
+body {
+  margin: 0;
+  font: 15px/1.5 "Segoe UI", system-ui, sans-serif;
+  background: linear-gradient(180deg, #e4eefc 0, var(--bg) 240px);
+  color: var(--ink);
+}
+button, input, select, textarea { font: inherit }
+:focus-visible { outline: 3px solid var(--blue-300); outline-offset: 2px }
+h2 { margin: 0; font-size: 22px; letter-spacing: -.02em; color: var(--blue-900) }
+.mut { color: var(--mut) }
+
+.mark {
+  width: 32px; height: 32px; border-radius: 9px; flex: none;
+  display: grid; place-items: center;
+  background: var(--blue-600); color: var(--white); font-weight: 700;
+}
+.brand { display: flex; align-items: center; gap: 10px; margin-bottom: 4px }
+
+button {
+  border: 1px solid var(--blue-200);
+  background: var(--white);
+  color: var(--blue-900);
+  border-radius: 10px;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+button:hover { background: var(--blue-50) }
+button.pri, button.pri:hover { background: var(--blue-600); border-color: var(--blue-600); color: var(--white); font-weight: 600 }
+button.pri:hover { background: var(--blue-700) }
+button.tonal { background: var(--blue-100); border-color: transparent; color: var(--blue-800); font-weight: 600 }
+button.tonal:hover { background: var(--blue-200) }
+button.dang { color: var(--bad); border-color: #fecaca; background: var(--white) }
+button.dang:hover { background: #fef2f2 }
+button:disabled { opacity: .55; cursor: not-allowed }
+
+input, select, textarea {
+  width: 100%; padding: 9px 12px;
+  border: 1px solid var(--blue-200); border-radius: 10px;
+  background: var(--white); color: var(--ink);
+}
+input:focus, select:focus, textarea:focus {
+  border-color: var(--blue-600);
+  box-shadow: 0 0 0 3px rgb(29 78 216 / 16%);
+  outline: none;
+}
+#login label, dialog label { display: block; margin: 12px 0 4px; font-weight: 600; color: var(--blue-900) }
+
+#login {
+  max-width: 400px; margin: 10vh auto; background: var(--white);
+  padding: 28px; border: 1px solid var(--blue-100); border-top: 4px solid var(--blue-600);
+  border-radius: 16px; box-shadow: var(--shadow);
+}
+
+#app { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh }
+nav { background: var(--white); border-right: 1px solid var(--blue-100); padding: 18px 12px }
+nav b { display: flex; align-items: center; gap: 8px; padding: 4px 10px 16px; color: var(--blue-800); font-size: 16px }
+nav button {
+  display: block; width: 100%; text-align: left; border: 0; background: transparent;
+  padding: 9px 12px; border-radius: 10px; margin-bottom: 2px; font-weight: 500; color: var(--blue-900);
+}
+nav button:hover { background: var(--blue-50) }
+nav button[aria-current=page] { background: var(--blue-100); color: var(--blue-800); font-weight: 700 }
+header {
+  display: flex; justify-content: flex-end; align-items: center; gap: 10px;
+  padding: 12px 24px; background: var(--white); border-bottom: 1px solid var(--blue-100);
+}
+#who { margin-right: auto; color: var(--blue-800); font-weight: 600 }
+main { padding: 24px; max-width: 1100px }
+
+.bar { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; flex-wrap: wrap }
+.bar h2 { flex: 1 }
+.bar input[type=search] { width: 240px }
+
+.tw {
+  overflow-x: auto; background: var(--white);
+  border: 1px solid var(--blue-100); border-radius: 14px;
+  box-shadow: 0 1px 2px rgb(23 37 84 / 4%);
+}
+table { border-collapse: collapse; width: 100% }
+th, td { padding: 11px 14px; text-align: left; border-bottom: 1px solid var(--blue-100); white-space: nowrap }
+th {
+  font-size: 12px; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--blue-800); font-weight: 700; background: var(--blue-50);
+}
+tr:last-child td { border-bottom: 0 }
+tbody tr:hover td { background: #f8fbff }
+td.act { text-align: right }
+td.act button { margin-left: 6px }
+
+.tag { padding: 3px 10px; border-radius: 99px; font-size: 12px; font-weight: 600; background: var(--blue-100); color: var(--blue-800) }
+.tag.off { background: #eef2f7; color: var(--mut) }
+
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px }
+.card {
+  background: var(--white); border: 1px solid var(--blue-100); border-radius: 14px;
+  padding: 16px 18px; box-shadow: 0 1px 2px rgb(23 37 84 / 4%);
+}
+.card b { display: block; font-size: 30px; color: var(--blue-700); letter-spacing: -.03em }
+.empty { padding: 36px; text-align: center; color: var(--mut) }
+
+dialog {
+  border: 0; border-radius: 16px; padding: 22px; width: min(520px, 94vw);
+  box-shadow: 0 24px 60px rgb(23 37 84 / 22%);
+}
+dialog::backdrop { background: rgb(15 39 84 / 45%) }
+dialog h3 { margin: 0 0 6px; color: var(--blue-900) }
+.err { color: var(--bad); margin-top: 10px; min-height: 1em }
+.row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px }
+
+#toast {
+  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+  background: var(--blue-800); color: var(--white);
+  padding: 10px 18px; border-radius: 10px; display: none; z-index: 9;
+}
+#toast.bad { background: var(--bad) }
+
+.grid td { padding: 4px; text-align: center }
+.grid th:first-child, .grid td:first-child { text-align: left; font-size: 13px }
+.cell {
+  width: 100%; min-width: 74px; padding: 9px 0; border-radius: 8px;
+  border: 1px solid var(--blue-200); background: var(--white); color: var(--mut);
+  user-select: none; touch-action: none;
+}
+.cell[aria-pressed=true] { background: var(--blue-600); border-color: var(--blue-600); color: var(--white); font-weight: 600 }
+.cell:disabled { opacity: .85; cursor: default }
+.leg { display: flex; gap: 14px; align-items: center; font-size: 13px; margin: 10px 0 }
+.swatch::before {
+  content: ""; display: inline-block; width: 12px; height: 12px; margin-right: 6px;
+  border-radius: 3px; border: 1px solid var(--blue-200); background: var(--white); vertical-align: -1px;
+}
+.swatch.on::before { background: var(--blue-600); border-color: var(--blue-600) }
+
+.banner {
+  background: var(--blue-100); border: 1px solid var(--blue-200); color: var(--blue-900);
+  border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; font-size: 14px;
+}
+.chk { list-style: none; padding: 0; margin: 8px 0 0 }
+.chk li { padding: 3px 0 }
+.chk .ok::before, .chk .warn::before, .chk .err::before {
+  font-family: "Font Awesome 6 Free"; font-weight: 900; margin-right: .35em;
+}
+.chk .ok::before { content: "\f00c"; color: var(--ok) }
+.chk .warn::before { content: "\f071"; color: var(--warn) }
+.chk .err::before { content: "\f00d"; color: var(--bad) }
+.tabs { display: flex; gap: 4px; border-bottom: 2px solid var(--blue-100); margin: 18px 0 14px }
+.tabs button { border: 0; background: transparent; border-radius: 10px 10px 0 0; padding: 9px 16px; color: var(--blue-800) }
+.tabs button[aria-selected=true] { background: var(--blue-600); color: var(--white) }
+.blk { border-left: 4px solid; border-radius: 8px; padding: 6px 8px; margin: 3px 0; text-align: left; font-size: 12.5px; line-height: 1.3 }
+.blk small { display: block; opacity: .8 }
+.ag td { vertical-align: top; min-width: 130px }
+.ag td:first-child { min-width: 90px }
+
+@media (max-width: 760px) {
+  #app { grid-template-columns: 1fr; align-content: start }
+  nav { display: flex; align-items: center; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--blue-100) }
+  nav b { display: none }
+  nav button { white-space: nowrap; width: auto; flex: none }
+  header { flex-wrap: wrap; padding: 12px 14px }
+  header button { white-space: nowrap }
+  main { padding: 14px }
+}

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grade Acadêmica</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
+<link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+<div id="login" hidden>
+  <div class="brand"><span class="mark" aria-hidden="true">G</span><h2>Grade Acadêmica</h2></div>
+  <p class="mut">Entre com seu e-mail institucional.</p>
+  <label for="em">E-mail</label>
+  <input id="em" type="email" autocomplete="username" placeholder="nome@instituicao.edu">
+  <label for="pw">Senha</label>
+  <input id="pw" type="password" autocomplete="current-password">
+  <div class="err" id="lerr" role="alert"></div>
+  <div class="row"><button class="pri" id="go">Entrar</button></div>
+</div>
+<div id="app" hidden>
+  <nav id="nav" aria-label="Navegação principal"></nav>
+  <div>
+    <header>
+      <span id="who"></span>
+      <button class="tonal" id="pwbtn">Alterar senha</button>
+      <button id="out">Sair</button>
+    </header>
+    <main id="main"></main>
+  </div>
+</div>
+<dialog id="dlg"></dialog>
+<div id="toast" role="status"></div>
+<script src="/static/js/app.js"></script>
+</body>
+</html>
