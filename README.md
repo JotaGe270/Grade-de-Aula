@@ -1,10 +1,13 @@
 # Grade Acadêmica — API + Front-end + Motor Híbrido (SA + Busca Tabu)
 ## Rodar
     pip install -r requirements.txt
-    python manage.py migrate
-    python manage.py seed_demo        # só em DEBUG; senha demo: Demo@12345
+    python manage.py migrate          # já cria automaticamente as contas nativas do sistema
     python manage.py runserver        # abre http://127.0.0.1:8000/
-Logins demo: gestor@demo.com, coord@demo.com, prof1@demo.com, prof2@demo.com, prof3@demo.com, prof4@demo.com
+Logins nativos (senha padrão: `Demo@12345`):
+- **1 Gestor:** `gestor@demo.com`
+- **2 Coordenadores:** `coord@demo.com` (2 cursos: `SI` e `CC`) e `coord2@demo.com` (1 curso: `ES`)
+- **18 Professores:** `prof1@demo.com` até `prof18@demo.com`
+Para restaurar os dados nativos a qualquer momento: `python manage.py seed_demo`
 Para criar o gestor real: `python manage.py shell` → User.objects.create_user(username=e, email=e, password=..., role="manager")
 ## Testes
     python manage.py test

@@ -9,7 +9,7 @@ INSTALLED_APPS = ["django.contrib.auth", "django.contrib.contenttypes", "django.
 MIDDLEWARE = ["django.middleware.security.SecurityMiddleware", "django.middleware.common.CommonMiddleware"]
 ROOT_URLCONF = "config.urls"
 AUTH_USER_MODEL = "core.User"
-DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": BASE_DIR / "db.sqlite3"}}
+DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": BASE_DIR / "db.sqlite3", "OPTIONS": {"timeout": 30}}}
 AUTH_PASSWORD_VALIDATORS = []  # sem restrições de senha (decisão do projeto)
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": ["rest_framework.authentication.TokenAuthentication"],

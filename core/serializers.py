@@ -17,6 +17,12 @@ class UserSerializer(s.ModelSerializer):
         if v == User.Role.PROFESSOR:
             raise s.ValidationError("Professores são criados em Professores.")
         return v
+    def validate_email(self, v):
+        v = v.strip()
+        qs = User.objects.filter(email__iexact=v)
+        if self.instance: qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists(): raise s.ValidationError("Já existe usuário com este e-mail.")
+        return v
     def create(self, vd):
         pw = vd.pop("password", None)
         if not pw:
@@ -66,6 +72,7 @@ class ProfessorSerializer(s.ModelSerializer):
         fields = ["id", "full_name", "email", "user_role", "password", "institutional_id", "max_weekly_hours", "subjects", "availability_count", "is_active"]
     def get_availability_count(self, obj): return obj.availability.count()
     def validate_email(self, v):
+        v = v.strip()
         qs = User.objects.filter(email__iexact=v)
         if self.instance: qs = qs.exclude(pk=self.instance.user_id)
         if qs.exists(): raise s.ValidationError("Já existe usuário com este e-mail.")
@@ -104,8 +111,13 @@ class SlotSerializer(s.ModelSerializer):
     class Meta:
         model = Slot; fields = "__all__"
     def validate(self, d):
+        weekday = d.get("weekday", getattr(self.instance, "weekday", None))
         start, end = d.get("start", getattr(self.instance, "start", None)), d.get("end", getattr(self.instance, "end", None))
         if start and end and end <= start: raise s.ValidationError("O fim deve ser depois do início.")
+        if weekday is not None and start and end:
+            qs = Slot.objects.filter(weekday=weekday, start__lt=end, end__gt=start)
+            if self.instance: qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists(): raise s.ValidationError("Já existe um horário com sobreposição neste dia da semana.")
         return d
 
 
@@ -118,5 +130,9 @@ class ScheduleProposalSerializer(s.ModelSerializer):
         model = ScheduleProposal
         fields = [
             "id", "createdAt", "by", "course", "course_name", "scope", "algorithm",
+            "status", "total", "alloc", "pending", "slots", "metrics"
+        ]
+        read_only_fields = [
+            "id", "createdAt", "by", "course_name", "scope", "algorithm",
             "status", "total", "alloc", "pending", "slots", "metrics"
         ]

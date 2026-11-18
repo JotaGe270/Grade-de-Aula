@@ -26,6 +26,13 @@ class HybridTimetableSolver:
     SOFT_PROF_GAP = 8
     SOFT_LOAD_BALANCE = 10
 
+    @staticmethod
+    def _time_to_mins(t_str):
+        if hasattr(t_str, "hour") and hasattr(t_str, "minute"):
+            return t_str.hour * 60 + t_str.minute
+        parts = str(t_str).strip().split(":")
+        return int(parts[0]) * 60 + int(parts[1])
+
     def __init__(self, slots, subjects, professors, mode="hybrid", seed=None,
                  max_sa_iterations=600, max_ts_iterations=250, tabu_tenure=9):
         """
@@ -34,6 +41,11 @@ class HybridTimetableSolver:
         professors: list of dicts {id, full_name, max_weekly_mins, available_slot_ids}
         mode: 'hybrid' | 'sa' | 'tabu'
         """
+        if seed is not None and (
+            isinstance(seed, bool)
+            or not isinstance(seed, (int, float, str, bytes, bytearray))
+        ):
+            raise ValueError("Seed inválido.")
         self.rng = random.Random(seed)
         self.mode = mode if mode in ("hybrid", "sa", "tabu") else "hybrid"
         self.max_sa_iterations = max_sa_iterations
@@ -46,6 +58,23 @@ class HybridTimetableSolver:
         self.subject_list = list(subjects)
         self.professors = {p["id"]: p for p in professors}
         self.prof_list = list(professors)
+
+        # Precompute overlapping slots on the same weekday (including self)
+        self.overlapping_slots = {}
+        slot_bounds = {
+            s["id"]: (s["weekday"], self._time_to_mins(s["start"]), self._time_to_mins(s["end"]))
+            for s in self.slot_list
+        }
+        for s1 in self.slot_list:
+            sid1 = s1["id"]
+            w1, start1, end1 = slot_bounds[sid1]
+            ov = {sid1}
+            for s2 in self.slot_list:
+                sid2 = s2["id"]
+                w2, start2, end2 = slot_bounds[sid2]
+                if w1 == w2 and start1 < end2 and end1 > start2:
+                    ov.add(sid2)
+            self.overlapping_slots[sid1] = ov
 
         # Precompute ordering of slots per weekday for consecutive/gap calculation
         self.slots_by_day = defaultdict(list)
@@ -67,14 +96,15 @@ class HybridTimetableSolver:
             sid = s["id"]
             qual_ids = set(s.get("qualified_prof_ids") or [])
             pairs = []
-            for p in self.prof_list:
-                pid = p["id"]
-                if qual_ids and pid not in qual_ids:
-                    continue
-                for slot_id in p["available_slot_ids"]:
-                    if slot_id in self.slots:
-                        pairs.append((pid, slot_id))
-            pairs.sort(key=lambda ps: (ps[0], ps[1]))
+            if qual_ids:
+                for p in self.prof_list:
+                    pid = p["id"]
+                    if pid not in qual_ids:
+                        continue
+                    for slot_id in p["available_slot_ids"]:
+                        if slot_id in self.slots:
+                            pairs.append((pid, slot_id))
+                pairs.sort(key=lambda ps: (ps[0], ps[1]))
             self.valid_pairs_by_subject[sid] = pairs
 
         # Order subjects by difficulty (most constrained first: fewer valid pairs, more weekly lessons)
@@ -95,7 +125,7 @@ class HybridTimetableSolver:
     def _is_qualified(self, subject_id, prof_id):
         qual = self.subjects[subject_id].get("qualified_prof_ids")
         if not qual:
-            return True
+            return False
         return prof_id in qual
 
     def evaluate_detailed(self, state):
@@ -116,8 +146,8 @@ class HybridTimetableSolver:
         prof_gaps = 0
         load_balance_cost = 0.0
 
-        course_slot_used = defaultdict(int)
-        prof_slot_used = defaultdict(int)
+        used_course_slot = set()
+        used_prof_slot = set()
         prof_mins = defaultdict(int)
         subj_profs = defaultdict(set)
         subj_day_indices = defaultdict(lambda: defaultdict(list))
@@ -134,9 +164,14 @@ class HybridTimetableSolver:
             course_id = subj["course_id"]
             weekday = slot["weekday"]
 
-            # Track usage for conflict detection
-            course_slot_used[(course_id, slot_id)] += 1
-            prof_slot_used[(prof_id, slot_id)] += 1
+            # Track usage for conflict detection (including overlapping slots on the same weekday)
+            if (course_id, slot_id) in used_course_slot:
+                course_conflicts += 1
+            if (prof_id, slot_id) in used_prof_slot:
+                prof_conflicts += 1
+            for ov_id in self.overlapping_slots.get(slot_id, {slot_id}):
+                used_course_slot.add((course_id, ov_id))
+                used_prof_slot.add((prof_id, ov_id))
             prof_mins[prof_id] += slot["duration_mins"]
 
             # Soft tracking
@@ -151,14 +186,6 @@ class HybridTimetableSolver:
             _, day_pos = self.slot_day_index[slot_id]
             subj_day_indices[subj_id][weekday].append(day_pos)
             prof_day_indices[prof_id][weekday].append(day_pos)
-
-        for count in course_slot_used.values():
-            if count > 1:
-                course_conflicts += (count - 1)
-
-        for count in prof_slot_used.values():
-            if count > 1:
-                prof_conflicts += (count - 1)
 
         for prof_id, mins in prof_mins.items():
             max_mins = self.professors[prof_id]["max_weekly_mins"]
@@ -298,7 +325,8 @@ class HybridTimetableSolver:
                         if 0 <= adj_idx < len(day_slots):
                             adj_slot_id = day_slots[adj_idx]
                             if (
-                                (pid, adj_slot_id) in candidate_set
+                                adj_slot_id not in self.overlapping_slots.get(slot_id, {slot_id})
+                                and (pid, adj_slot_id) in candidate_set
                                 and (course_id, adj_slot_id) not in used_course_slot
                                 and (pid, adj_slot_id) not in used_prof_slot
                                 and prof_mins[pid] + dur + self.slots[adj_slot_id]["duration_mins"] <= max_mins
@@ -319,8 +347,9 @@ class HybridTimetableSolver:
             if best_pair is not None:
                 pid, slot_id = best_pair
                 state[d_idx] = best_pair
-                used_course_slot.add((course_id, slot_id))
-                used_prof_slot.add((pid, slot_id))
+                for ov_id in self.overlapping_slots.get(slot_id, {slot_id}):
+                    used_course_slot.add((course_id, ov_id))
+                    used_prof_slot.add((pid, ov_id))
                 prof_mins[pid] += self.slots[slot_id]["duration_mins"]
                 subj_positions[sid].append(self.slot_day_index[slot_id])
                 subj_prof.setdefault(sid, pid)
@@ -399,6 +428,8 @@ class HybridTimetableSolver:
                     for adj_pos in (sib_pos - 1, sib_pos + 1):
                         if 0 <= adj_pos < len(day_slots):
                             adj_slot = day_slots[adj_pos]
+                            if adj_slot in self.overlapping_slots.get(sib_slot, {sib_slot}):
+                                continue
                             if (sib_pid, adj_slot) in pairs1:
                                 adj_candidates.append((sib_pid, adj_slot))
                             else:
@@ -413,6 +444,7 @@ class HybridTimetableSolver:
                     continue
 
                 target_pid, target_slot = new_pair
+                target_ov = self.overlapping_slots.get(target_slot, {target_slot})
                 new_state = list(state)
                 new_state[d1] = new_pair
 
@@ -423,16 +455,18 @@ class HybridTimetableSolver:
                     p2, s2 = asg2
                     sid2 = self.demands[d2]["subject_id"]
                     c2 = self.subjects[sid2]["course_id"]
-                    if s2 == target_slot and (c2 == c1 or p2 == target_pid):
+                    if s2 in target_ov and (c2 == c1 or p2 == target_pid):
                         pairs2 = self.valid_pairs_by_subject[sid2]
                         if pairs2:
                             occupied_course = {
-                                (self.subjects[self.demands[k]["subject_id"]]["course_id"], new_state[k][1])
+                                (self.subjects[self.demands[k]["subject_id"]]["course_id"], ov_id)
                                 for k in range(n_demands) if k != d2 and new_state[k] is not None
+                                for ov_id in self.overlapping_slots.get(new_state[k][1], {new_state[k][1]})
                             }
                             occupied_prof = {
-                                (new_state[k][0], new_state[k][1])
+                                (new_state[k][0], ov_id)
                                 for k in range(n_demands) if k != d2 and new_state[k] is not None
+                                for ov_id in self.overlapping_slots.get(new_state[k][1], {new_state[k][1]})
                             }
                             prof_load = defaultdict(int)
                             for k in range(n_demands):
@@ -453,9 +487,13 @@ class HybridTimetableSolver:
                                     break
                             if not relocated and old_pair is not None:
                                 old_p1, old_s1 = old_pair
-                                cand2_at_old = [p for (p, sl) in pairs2 if sl == old_s1]
-                                if cand2_at_old:
-                                    new_state[d2] = (cand2_at_old[0], old_s1)
+                                if (c2, old_s1) not in occupied_course:
+                                    cand2_at_old = [
+                                        p for (p, sl) in pairs2
+                                        if sl == old_s1 and (p, old_s1) not in occupied_prof
+                                    ]
+                                    if cand2_at_old:
+                                        new_state[d2] = (cand2_at_old[0], old_s1)
 
                 move_key = ("assign", d1, new_pair)
                 rev_key = ("assign", d1, old_pair)
@@ -672,6 +710,8 @@ class HybridTimetableSolver:
             dur = self.slots[slot_id]["duration_mins"]
             max_mins = self.professors[pid]["max_weekly_mins"]
 
+            if not self._is_qualified(sid, pid):
+                continue
             if slot_id not in self.professors[pid]["available_slot_ids"]:
                 continue
             if (course_id, slot_id) in used_course_slot:
@@ -682,8 +722,9 @@ class HybridTimetableSolver:
                 continue
 
             clean_state[d_idx] = (pid, slot_id)
-            used_course_slot.add((course_id, slot_id))
-            used_prof_slot.add((pid, slot_id))
+            for ov_id in self.overlapping_slots.get(slot_id, {slot_id}):
+                used_course_slot.add((course_id, ov_id))
+                used_prof_slot.add((pid, ov_id))
             prof_mins[pid] += dur
 
         for d_idx, asg in enumerate(clean_state):
@@ -696,8 +737,9 @@ class HybridTimetableSolver:
                 max_mins = self.professors[pid]["max_weekly_mins"]
                 if (course_id, slot_id) not in used_course_slot and (pid, slot_id) not in used_prof_slot and prof_mins[pid] + dur <= max_mins:
                     clean_state[d_idx] = (pid, slot_id)
-                    used_course_slot.add((course_id, slot_id))
-                    used_prof_slot.add((pid, slot_id))
+                    for ov_id in self.overlapping_slots.get(slot_id, {slot_id}):
+                        used_course_slot.add((course_id, ov_id))
+                        used_prof_slot.add((pid, ov_id))
                     prof_mins[pid] += dur
                     break
 
@@ -793,12 +835,15 @@ class HybridTimetableSolver:
 
     def _diagnose_missing(self, subj, missing, alloc, used_course_slot, used_prof_slot, prof_mins):
         qual_ids = subj.get("qualified_prof_ids") or []
-        if qual_ids:
-            target_profs = [self.professors[pid] for pid in qual_ids if pid in self.professors]
-        else:
-            target_profs = list(self.prof_list)
+        target_profs = [self.professors[pid] for pid in qual_ids if pid in self.professors]
+        if not qual_ids or not target_profs:
+            return {
+                "professor": "Sem professor atribuído",
+                "reason": "Nenhum professor atribuído/habilitado para esta disciplina.",
+                "suggestion": "Atribuir pelo menos um professor ativo à disciplina na aba Professores.",
+            }
 
-        prof_names = ", ".join(p["full_name"] for p in target_profs) if target_profs else "Sem professor atribuído"
+        prof_names = ", ".join(p["full_name"] for p in target_profs)
         course_id = subj["course_id"]
         free_windows = self._format_free_slot_windows(course_id, used_course_slot, missing)
 
@@ -812,6 +857,16 @@ class HybridTimetableSolver:
         sid = subj["id"]
         pairs = self.valid_pairs_by_subject[sid]
         if not pairs:
+            if any(p.get("busy_other_course_slots", 0) > 0 for p in target_profs):
+                return {
+                    "professor": prof_names,
+                    "reason": "Todos os horários disponíveis do(s) docente(s) já estão ocupados em grades publicadas de outras turmas/cursos.",
+                    "suggestion": (
+                        f"Falar com {prof_names} para abrir novos horários de disponibilidade "
+                        f"(sugestão de horários livres na turma: {free_windows}), pois sua disponibilidade atual "
+                        f"já foi consumida por outras grades publicadas."
+                    ),
+                }
             return {
                 "professor": prof_names,
                 "reason": "Nenhum horário disponível marcado pelo(s) docente(s) habilitado(s).",
@@ -824,7 +879,11 @@ class HybridTimetableSolver:
         reasons = set()
         has_overload = False
         has_slot_clash = False
-        prof_marked_slots = {slot_id for _, slot_id in pairs}
+        prof_marked_slots = {
+            ov_id
+            for _, slot_id in pairs
+            for ov_id in self.overlapping_slots.get(slot_id, {slot_id})
+        }
 
         for pid, slot_id in pairs:
             dur = self.slots[slot_id]["duration_mins"]
