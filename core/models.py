@@ -67,3 +67,28 @@ class Availability(models.Model):
 
     class Meta:
         unique_together = ("professor", "slot")
+
+
+
+class ScheduleProposal(models.Model):
+    """Proposta de grade horária gerada pelo motor de otimização (SA / Tabu / Híbrido)."""
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Rascunho"
+        PUBLISHED = "published", "Publicada"
+        ARCHIVED = "archived", "Arquivada"
+
+    created_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name="schedule_proposals")
+    course = models.ForeignKey(Course, null=True, blank=True, on_delete=models.CASCADE, related_name="schedule_proposals")
+    by_name = models.CharField(max_length=150, default="Coordenador")
+    scope = models.CharField(max_length=120, default="Meus cursos")
+    algorithm = models.CharField(max_length=20, default="hybrid")
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.DRAFT)
+    total = models.PositiveIntegerField(default=0)
+    alloc = models.JSONField(default=list)
+    pending = models.JSONField(default=list)
+    slots = models.JSONField(default=list)
+    metrics = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]

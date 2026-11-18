@@ -75,9 +75,9 @@ def change_password(request):
 
 
 class MyProfile(APIView):
-    """Professor edita só seus dados básicos (nome e identificador institucional)."""
+    """Professor (ou Coordenador que também leciona) edita seus dados básicos (nome e identificador institucional)."""
     def patch(self, request):
-        p = Professor.objects.filter(user=request.user, is_active=True).select_related("user").first() if request.user.role == P else None
+        p = Professor.objects.filter(user=request.user, is_active=True).select_related("user").first() if request.user.role in (P, C) else None
         if not p: return Response({"detail": "Apenas professores."}, status=403)
         name, inst = request.data.get("full_name"), request.data.get("institutional_id")
         if name is not None:
@@ -113,8 +113,12 @@ class SubjectViewSet(Base):
     serializer_class = SubjectSerializer; search_fields = ["name", "code", "course__name"]; write_roles = (C,)
     def get_queryset(self):
         qs, u = Subject.objects.select_related("course").prefetch_related("professors").order_by("name"), self.request.user
-        if u.role == C: return qs.filter(course__coordinator=u)
-        if u.role == P: return qs.filter(professors__user=u)
+        if self.request.query_params.get("mine") == "1":
+            qs = qs.filter(professors__user=u)
+        elif u.role == C: qs = qs.filter(course__coordinator=u)
+        elif u.role == P: qs = qs.filter(professors__user=u)
+        course_id = self.request.query_params.get("course")
+        if course_id: qs = qs.filter(course_id=course_id)
         return qs
 
 
@@ -123,6 +127,10 @@ class ProfessorViewSet(Base):
     write_roles = (M,)  # contas de professor: só o gestor; coordenador apenas atribui disciplinas
     def get_queryset(self):
         qs, u = Professor.objects.select_related("user").prefetch_related("subjects").order_by("user__first_name"), self.request.user
+        if self.request.query_params.get("me") == "1":
+            if u.role == C:
+                Professor.objects.get_or_create(user=u, defaults={"max_weekly_hours": 16})
+            return qs.filter(user=u)
         return qs.filter(user=u) if u.role == P else qs
     def perform_destroy(self, inst):
         inst.user.delete()  # remove também o perfil de professor e sua disponibilidade
@@ -130,7 +138,6 @@ class ProfessorViewSet(Base):
     def availability(self, request, pk=None):
         p = self.get_object()
         return Response({"slots": list(p.availability.values_list("slot_id", flat=True))})
-
 
     @action(detail=True, methods=["put"], url_path="subjects", permission_classes=[MgrOrCoord])
     def assign(self, request, pk=None):
@@ -164,7 +171,12 @@ class SlotViewSet(Base):
 class MyAvailability(APIView):
     permission_classes = [IsAuthenticated]
     def _prof(self, request):
-        return Professor.objects.filter(user=request.user, is_active=True).first() if request.user.role == P else None
+        if request.user.role == P:
+            return Professor.objects.filter(user=request.user, is_active=True).first()
+        if request.user.role == C:
+            p, _ = Professor.objects.get_or_create(user=request.user, defaults={"max_weekly_hours": 16})
+            return p if p.is_active else None
+        return None
     def get(self, request):
         p = self._prof(request)
         if not p: return Response({"detail": "Apenas professores."}, status=403)
@@ -202,3 +214,182 @@ def dashboard(request):
                  ("Horários marcados como disponíveis", p.availability.count() if p else 0),
                  ("Carga semanal máxima (h)", p.max_weekly_hours if p else 0)]
     return Response({"cards": [{"label": l, "value": v} for l, v in cards]})
+
+
+class ScheduleViewSet(Base):
+    """Gerencia propostas de grade horária geradas pelo motor Híbrido (SA + Tabu Search) por curso."""
+    serializer_class = ScheduleProposalSerializer
+    read_roles, write_roles = ALL, (M, C)
+
+    def get_queryset(self):
+        u = self.request.user
+        qs = ScheduleProposal.objects.select_related("course").all()
+        if u.role == P:
+            return qs.filter(status=ScheduleProposal.Status.PUBLISHED)
+        if u.role == C:
+            qs = qs.filter(
+                models.Q(created_by=u)
+                | models.Q(course__coordinator=u)
+                | models.Q(status=ScheduleProposal.Status.PUBLISHED)
+            )
+        course_id = self.request.query_params.get("course_id")
+        if course_id:
+            qs = qs.filter(course_id=course_id)
+        return qs
+
+    @action(detail=False, methods=["post"], url_path="generate")
+    @transaction.atomic
+    def generate(self, request):
+        from .solver import HybridTimetableSolver
+        from collections import defaultdict
+
+        u = request.user
+        slots_qs = Slot.objects.filter(is_active=True).order_by("weekday", "start")
+        subs_qs = Subject.objects.filter(is_active=True, course__is_active=True).select_related("course").prefetch_related("professors")
+        if u.role == C:
+            subs_qs = subs_qs.filter(course__coordinator=u)
+
+        course_id = request.data.get("course_id")
+        course_obj = None
+        if course_id:
+            course_qs = Course.objects.filter(pk=course_id, is_active=True)
+            if u.role == C:
+                course_qs = course_qs.filter(coordinator=u)
+            course_obj = course_qs.first()
+            if not course_obj:
+                return Response({"detail": "Curso inválido ou fora da sua coordenação."}, status=400)
+            subs_qs = subs_qs.filter(course_id=course_obj.id)
+
+        profs_qs = Professor.objects.filter(is_active=True, user__is_active=True).select_related("user").prefetch_related("availability", "subjects")
+
+        slots_list = list(slots_qs)
+        subs_list = list(subs_qs)
+        profs_list = list(profs_qs)
+
+        if not slots_list:
+            return Response({"detail": "Nenhum horário ativo cadastrado."}, status=400)
+        if not subs_list:
+            return Response({"detail": "Nenhuma disciplina ativa encontrada neste curso para gerar a grade."}, status=400)
+        if not profs_list:
+            return Response({"detail": "Nenhum professor ativo cadastrado."}, status=400)
+
+        slots_data = []
+        slots_serial = []
+        slot_dur_map = {}
+        for sl in slots_list:
+            dur = max(1, (sl.end.hour * 60 + sl.end.minute) - (sl.start.hour * 60 + sl.start.minute))
+            slot_dur_map[sl.id] = dur
+            start_str = sl.start.strftime("%H:%M:%S")
+            end_str = sl.end.strftime("%H:%M:%S")
+            slots_data.append({
+                "id": sl.id,
+                "weekday": sl.weekday,
+                "start": start_str,
+                "end": end_str,
+                "duration_mins": dur,
+            })
+            slots_serial.append({
+                "id": sl.id,
+                "weekday": sl.weekday,
+                "start": start_str,
+                "end": end_str,
+            })
+
+        # Se estiver gerando para um curso específico, respeita os horários e cargas já ocupados
+        # por grades PUBLICADAS de OUTROS cursos!
+        busy_prof_slots = defaultdict(set)
+        busy_prof_mins = defaultdict(int)
+        if course_obj:
+            other_published = ScheduleProposal.objects.filter(
+                status=ScheduleProposal.Status.PUBLISHED
+            ).exclude(course_id=course_obj.id)
+            for pub in other_published:
+                for item in (pub.alloc or []):
+                    pid = item.get("professorId")
+                    sid = item.get("slotId")
+                    if pid and sid and sid not in busy_prof_slots[pid]:
+                        busy_prof_slots[pid].add(sid)
+                        busy_prof_mins[pid] += slot_dur_map.get(sid, 50)
+
+        active_prof_ids = {p.id for p in profs_list}
+        subjects_data = []
+        for sb in subs_list:
+            qual_ids = [p.id for p in sb.professors.all() if p.id in active_prof_ids]
+            subjects_data.append({
+                "id": sb.id,
+                "name": sb.name,
+                "code": sb.code,
+                "course_id": sb.course_id,
+                "course_name": sb.course.name,
+                "weekly_lessons": sb.weekly_lessons,
+                "lesson_minutes": sb.lesson_minutes,
+                "preferred_days": sb.preferred_days or [],
+                "qualified_prof_ids": qual_ids,
+            })
+
+        professors_data = []
+        for p in profs_list:
+            avail_ids = {a.slot_id for a in p.availability.all()} - busy_prof_slots[p.id]
+            rem_mins = max(0, p.max_weekly_hours * 60 - busy_prof_mins[p.id])
+            professors_data.append({
+                "id": p.id,
+                "full_name": p.user.first_name or p.user.email,
+                "max_weekly_mins": rem_mins,
+                "available_slot_ids": avail_ids,
+            })
+
+        algo = str(request.data.get("algorithm") or "hybrid").lower()
+        if algo not in ("hybrid", "sa", "tabu"):
+            algo = "hybrid"
+        seed = request.data.get("seed")
+
+        solver = HybridTimetableSolver(
+            slots=slots_data,
+            subjects=subjects_data,
+            professors=professors_data,
+            mode=algo,
+            seed=seed,
+        )
+        result = solver.solve()
+
+        scope_label = course_obj.name if course_obj else ("Meus cursos" if u.role == C else "Todos os cursos")
+
+        proposal = ScheduleProposal.objects.create(
+            created_by=u,
+            course=course_obj,
+            by_name=u.first_name or u.email,
+            scope=scope_label,
+            algorithm=algo,
+            status=ScheduleProposal.Status.DRAFT,
+            total=result["total"],
+            alloc=result["alloc"],
+            pending=result["pending"],
+            slots=slots_serial,
+            metrics=result["metrics"],
+        )
+
+        # Keep up to 10 proposals in history per user and course (preserving published)
+        hist_qs = ScheduleProposal.objects.filter(created_by=u, course=course_obj).exclude(
+            status=ScheduleProposal.Status.PUBLISHED
+        )
+        old_ids = list(hist_qs.order_by("-created_at", "-id").values_list("id", flat=True)[10:])
+        if old_ids:
+            ScheduleProposal.objects.filter(id__in=old_ids).delete()
+
+        return Response(ScheduleProposalSerializer(proposal).data, status=201)
+
+    @action(detail=True, methods=["post"], url_path="publish")
+    @transaction.atomic
+    def publish(self, request, pk=None):
+        proposal = self.get_object()
+        # Arquiva apenas a grade publicada anterior do MESMO curso (permitindo 1 grade publicada por curso!)
+        same_scope = ScheduleProposal.objects.filter(status=ScheduleProposal.Status.PUBLISHED).exclude(pk=proposal.pk)
+        if proposal.course_id:
+            same_scope = same_scope.filter(course_id=proposal.course_id)
+        else:
+            same_scope = same_scope.filter(course__isnull=True)
+        same_scope.update(status=ScheduleProposal.Status.ARCHIVED)
+
+        proposal.status = ScheduleProposal.Status.PUBLISHED
+        proposal.save(update_fields=["status"])
+        return Response(ScheduleProposalSerializer(proposal).data)

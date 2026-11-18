@@ -57,12 +57,13 @@ class SubjectSerializer(s.ModelSerializer):
 class ProfessorSerializer(s.ModelSerializer):
     full_name = s.CharField(source="user.first_name")
     email = s.EmailField(source="user.email")
+    user_role = s.CharField(source="user.role", read_only=True)
     password = s.CharField(write_only=True, required=False)
     subjects = s.PrimaryKeyRelatedField(many=True, queryset=Subject.objects.all(), required=False)
     availability_count = s.SerializerMethodField()
     class Meta:
         model = Professor
-        fields = ["id", "full_name", "email", "password", "institutional_id", "max_weekly_hours", "subjects", "availability_count", "is_active"]
+        fields = ["id", "full_name", "email", "user_role", "password", "institutional_id", "max_weekly_hours", "subjects", "availability_count", "is_active"]
     def get_availability_count(self, obj): return obj.availability.count()
     def validate_email(self, v):
         qs = User.objects.filter(email__iexact=v)
@@ -106,3 +107,16 @@ class SlotSerializer(s.ModelSerializer):
         start, end = d.get("start", getattr(self.instance, "start", None)), d.get("end", getattr(self.instance, "end", None))
         if start and end and end <= start: raise s.ValidationError("O fim deve ser depois do início.")
         return d
+
+
+class ScheduleProposalSerializer(s.ModelSerializer):
+    createdAt = s.DateTimeField(source="created_at", read_only=True)
+    by = s.CharField(source="by_name", read_only=True)
+    course_name = s.CharField(source="course.name", read_only=True, default="")
+
+    class Meta:
+        model = ScheduleProposal
+        fields = [
+            "id", "createdAt", "by", "course", "course_name", "scope", "algorithm",
+            "status", "total", "alloc", "pending", "slots", "metrics"
+        ]

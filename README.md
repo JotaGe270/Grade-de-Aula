@@ -1,4 +1,4 @@
-# Grade Acadêmica — Fase 1 (API + front-end dos 3 perfis)
+# Grade Acadêmica — API + Front-end + Motor Híbrido (SA + Busca Tabu)
 ## Rodar
     pip install -r requirements.txt
     python manage.py migrate
@@ -11,15 +11,16 @@ Para criar o gestor real: `python manage.py shell` → User.objects.create_user(
 ## Produção
 DJANGO_DEBUG=0, DJANGO_SECRET_KEY e ALLOWED_HOSTS obrigatórios (Postgres/HTTPS a configurar).
 ## Estrutura
-- `core/` — API (modelos, serializers, permissões)
+- `core/` — API (modelos, serializers, permissões, testes)
+- `core/solver.py` — Motor Híbrido de Otimização (`HybridTimetableSolver`: Simulated Annealing + Tabu Search)
 - `config/` — Django (settings, rotas)
 - `frontend/index.html` — página
 - `frontend/static/css/app.css` — componentes visuais
-- `frontend/static/js/app.js` — comportamento da página
+- `frontend/static/js/app.js` — comportamento da página e integração da tela de Alocação
 ## Decisões
 - Desativar = PATCH {is_active:false}; excluir = DELETE (definitivo). Curso com disciplinas não pode ser excluído (409).
-- Tela de Alocação é uma prévia visual (motor real ainda não implementado) e não fixa sala.
+- Tela de Alocação integrada ao backend (`/api/schedules/generate/`, `/api/schedules/<id>/publish/`) com suporte a 3 modos de otimização: **Híbrido (SA + Busca Tabu)**, **Simulated Annealing** e **Busca Tabu**.
 - Gestor cadastra coordenadores, professores e horários. Coordenador cadastra cursos, disciplinas e salas.
 - A sala é volátil: a mesma turma pode mudar de sala de um dia para o outro, então nenhum perfil aloca sala na grade.
-- "Restrições" = disponibilidade semanal (Availability) + carga máxima do professor.
+- "Restrições" = disponibilidade semanal (Availability) + carga máxima do professor + conflitos de curso/professor + preferências suaves (dias preferidos, habilitação na disciplina, distribuição semanal e redução de janelas).
 - Token DRF; permissões por perfil no servidor (core/views.py: RolePerm).

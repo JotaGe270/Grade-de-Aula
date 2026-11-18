@@ -12,6 +12,7 @@ router.register("subjects", v.SubjectViewSet, "subject")
 router.register("professors", v.ProfessorViewSet, "professor")
 router.register("rooms", v.RoomViewSet, "room")
 router.register("slots", v.SlotViewSet, "slot")
+router.register("schedules", v.ScheduleViewSet, "schedule")
 
 def index(request):
     return HttpResponse((Path(__file__).resolve().parent.parent / "frontend" / "index.html").read_text("utf-8"))
